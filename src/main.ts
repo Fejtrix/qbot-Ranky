@@ -47,3 +47,16 @@ discordClient.on('messageCreate', handleLegacyCommand);
 
 // [Module]
 export { discordClient, robloxClient, robloxGroup };
+
+import http from 'http';
+
+// Keeps Render's web service health check happy
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Qbot is alive and running!');
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`HTTP server is listening on port ${PORT}`);
+});
