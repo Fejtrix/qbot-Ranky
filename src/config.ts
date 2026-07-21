@@ -15,7 +15,7 @@ export const config: BotConfig = {
         shout: [''],
         join: [''],
         signal: [''],
-        admin: [''],
+        admin: ['1528857017387716892'],
     },
     logChannels: {
         actions: '',
