@@ -97,7 +97,7 @@ class SetRankCommand extends Command {
         }
 
         const userData = await provider.findUser(robloxUser.id.toString());
-        if(userData?.suspendedUntil) return ctx.reply({ embeds: [ getUserSuspendedEmbed() ] });
+        if((userData as any)?.suspendedUntil) return ctx.reply({ embeds: [ getUserSuspendedEmbed() ] });
 
         try {
             await robloxGroup.updateMember(robloxUser.id, role.id);
@@ -106,8 +106,9 @@ class SetRankCommand extends Command {
 
             // --- Synchronize Discord Roles ---
             try {
-                if (userData && userData.discordId && ctx.guild) {
-                    const discordMember = await ctx.guild.members.fetch(userData.discordId).catch(() => null);
+                const userAny = userData as any;
+                if (userAny && userAny.discordId && ctx.guild) {
+                    const discordMember = await ctx.guild.members.fetch(userAny.discordId).catch(() => null);
                     
                     if (discordMember && (config as any).discordRolesMap) {
                         const targetDiscordRoleId = (config as any).discordRolesMap[role.id];
