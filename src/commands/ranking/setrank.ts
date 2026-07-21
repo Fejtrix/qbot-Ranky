@@ -1,137 +1,53 @@
-import { discordClient, robloxClient, robloxGroup } from '../../main';
-import { CommandContext } from '../../structures/addons/CommandAddons';
-import { Command } from '../../structures/Command';
-import {
-    getInvalidRobloxUserEmbed,
-    getRobloxUserIsNotMemberEmbed,
-    getSuccessfulSetRankEmbed,
-    getUnexpectedErrorEmbed,
-    getRoleNotFoundEmbed,
-    getVerificationChecksFailedEmbed,
-    getAlreadyRankedEmbed,
-    getUserSuspendedEmbed,
-} from '../../handlers/locale';
-import { config } from '../../config';
-import { User, PartialUser, GroupMember } from 'bloxy/dist/structures';
-import { checkActionEligibility } from '../../handlers/verificationChecks';
-import { logAction } from '../../handlers/handleLogging';
-import { getLinkedRobloxUser } from '../../handlers/accountLinks';
-import { provider } from '../../database';
-
-class SetRankCommand extends Command {
-    constructor() {
-        super({
-            trigger: 'setrank',
-            description: 'Changes the rank of a user in the Roblox group.',
-            type: 'ChatInput',
-            module: 'ranking',
-            args: [
-                {
-                    trigger: 'roblox-user',
-                    description: 'Whose rank would you like to change?',
-                    autocomplete: true,
-                    type: 'RobloxUser',
-                },
-                {
-                    trigger: 'roblox-role',
-                    description: 'What role would you like to change them to?',
-                    autocomplete: true,
-                    type: 'RobloxRole',
-                },
-                {
-                    trigger: 'reason',
-                    description: 'If you would like a reason to be supplied in the logs, put it here.',
-                    isLegacyFlag: true,
-                    required: false,
-                    type: 'String',
-                },
-            ],
-            permissions: [
-                {
-                    type: 'role',
-                    ids: config.permissions.ranking,
-                    value: true,
-                }
-            ]
-        });
-    }
-
-    async run(ctx: CommandContext) {
-        let robloxUser: User | PartialUser;
-        try {
-            robloxUser = await robloxClient.getUser(ctx.args['roblox-user'] as number);
-        } catch (err) {
+// --- Synchronize Discord Roles via Bloxlink API ---
             try {
-                const robloxUsers = await robloxClient.getUsersByUsernames([ ctx.args['roblox-user'] as string ]);
-                if(robloxUsers.length === 0) throw new Error();
-                robloxUser = robloxUsers[0];
-            } catch (err) {
-                try {
-                    const idQuery = ctx.args['roblox-user'].replace(/[^0-9]/gm, '');
-                    const discordUser = await discordClient.users.fetch(idQuery);
-                    const linkedUser = await getLinkedRobloxUser(discordUser.id);
-                    if(!linkedUser) throw new Error();
-                    robloxUser = linkedUser;
-                } catch (err) {
-                    return ctx.reply({ embeds: [ getInvalidRobloxUserEmbed() ]});
-                }
-            }
-        }
+                const bloxlinkApiKey = process.env.BLOXLINK_API_KEY || (config as any).bloxlinkApiKey;
+                const bloxlinkGuildId = (config as any).bloxlinkGuildId;
 
-        let robloxMember: GroupMember;
-        try {
-            robloxMember = await robloxGroup.getMember(robloxUser.id);
-            if(!robloxMember) throw new Error();
-        } catch (err) {
-            return ctx.reply({ embeds: [ getRobloxUserIsNotMemberEmbed() ]});
-        }
+                console.log('Fetching Discord ID from Bloxlink for Roblox ID:', robloxUser.id);
 
-        const groupRoles = await robloxGroup.getRoles();
-        const role = groupRoles.find((role) => role.id == ctx.args['roblox-role'] || role.rank == ctx.args['roblox-role'] || role.name.toLowerCase().startsWith(ctx.args['roblox-role'].toLowerCase()));
-        if(!role || !role.rank || role.rank === 0 || role.rank > config.maximumRank || robloxMember.role.rank > config.maximumRank) return ctx.reply({ embeds: [ getRoleNotFoundEmbed() ]});
-        if(robloxMember.role.id === role.id) return ctx.reply({ embeds: [ getAlreadyRankedEmbed() ] });
-
-        if(config.verificationChecks) {
-            const actionEligibility = await checkActionEligibility(ctx.user.id, ctx.guild.id, robloxMember, role.rank);
-            if(!actionEligibility) return ctx.reply({ embeds: [ getVerificationChecksFailedEmbed() ] });
-        }
-
-        const userData = await provider.findUser(robloxUser.id.toString());
-        if((userData as any)?.suspendedUntil) return ctx.reply({ embeds: [ getUserSuspendedEmbed() ] });
-
-        try {
-            await robloxGroup.updateMember(robloxUser.id, role.id);
-            ctx.reply({ embeds: [ await getSuccessfulSetRankEmbed(robloxUser, role.name) ]});
-            logAction('Update Rank', ctx.user, ctx.args['reason'], robloxUser, `${robloxMember.role.name} (${robloxMember.role.rank}) → ${role.name} (${role.rank})`);
-
-            // --- Synchronize Discord Roles ---
-            try {
-                const userAny = userData as any;
-                if (userAny && userAny.discordId && ctx.guild) {
-                    const discordMember = await ctx.guild.members.fetch(userAny.discordId).catch(() => null);
-                    
-                    if (discordMember && (config as any).discordRolesMap) {
-                        const targetDiscordRoleId = (config as any).discordRolesMap[role.id];
-                        const oldDiscordRoleId = (config as any).discordRolesMap[robloxMember.role.id];
-
-                        if (oldDiscordRoleId && discordMember.roles.cache.has(oldDiscordRoleId)) {
-                            await discordMember.roles.remove(oldDiscordRoleId).catch(() => {});
+                if (bloxlinkApiKey && bloxlinkGuildId) {
+                    const response = await fetch(`https://api.blox.link/v4/public/guilds/${bloxlinkGuildId}/roblox-to-discord/${robloxUser.id}`, {
+                        headers: {
+                            'Authorization': bloxlinkApiKey
                         }
-                        if (targetDiscordRoleId && !discordMember.roles.cache.has(targetDiscordRoleId)) {
-                            await discordMember.roles.add(targetDiscordRoleId).catch(() => {});
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json() as { discordIDs?: string[] };
+                        const discordId = data.discordIDs?.[0];
+
+                        console.log('Resolved Bloxlink Discord ID:', discordId);
+
+                        if (discordId && ctx.guild) {
+                            const discordMember = await ctx.guild.members.fetch(discordId).catch((err) => {
+                                console.error('Could not fetch Discord member from guild:', err);
+                                return null;
+                            });
+
+                            if (discordMember && (config as any).discordRolesMap) {
+                                const targetDiscordRoleId = (config as any).discordRolesMap[role.id];
+                                const oldDiscordRoleId = (config as any).discordRolesMap[robloxMember.role.id];
+
+                                console.log('Assigning Discord Role:', targetDiscordRoleId, 'Removing Old Role:', oldDiscordRoleId);
+
+                                if (oldDiscordRoleId && discordMember.roles.cache.has(oldDiscordRoleId)) {
+                                    await discordMember.roles.remove(oldDiscordRoleId).catch((e) => console.error('Failed to remove old role:', e));
+                                }
+                                if (targetDiscordRoleId && !discordMember.roles.cache.has(targetDiscordRoleId)) {
+                                    await discordManagerAdd: await discordMember.roles.add(targetDiscordRoleId).catch((e) => console.error('Failed to add new role:', e));
+                                    console.log('Successfully updated Discord role!');
+                                }
+                            }
+                        } else {
+                            console.log('No linked Discord ID found for this Roblox user in Bloxlink for this server.');
                         }
+                    } else {
+                        console.error('Bloxlink API request failed with status:', response.status);
                     }
+                } else {
+                    console.log('Bloxlink API Key or Guild ID is missing in configuration/environment variables.');
                 }
             } catch (discordErr) {
                 console.error('Failed to sync Discord roles:', discordErr);
             }
             // ---------------------------------
-
-        } catch (err) {
-            console.log(err);
-            return ctx.reply({ embeds: [ getUnexpectedErrorEmbed() ]});
-        }
-    }
-}
-
-export default SetRankCommand;
