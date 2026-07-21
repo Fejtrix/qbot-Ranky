@@ -6,14 +6,19 @@ let lastRecordedDate: number;
 
 const recordAuditLogs = async () => {
     try {
-        const auditLog = await robloxClient.apis.groupsAPI.getAuditLogs({
-            groupId: config.groupId,
-            actionType: 'ChangeRank',
-            limit: 10,
-            sortOrder: 'Desc',
-        });
-        const mostRecentDate = new Date(auditLog.data?.[0].created).getTime();
-        if(lastRecordedDate) {
+    const auditLog = await robloxClient.apis.groupsAPI.getAuditLogs({
+        groupId: config.groupId,
+        actionType: 'ChangeRank',
+        limit: 10,
+        sortOrder: 'Desc',
+    });
+
+    if (!auditLog.data || auditLog.data.length === 0) {
+        setTimeout(recordAuditLogs, 60000);
+        return;
+    }
+
+    const mostRecentDate = new Date(auditLog.data[0].created).getTime();
             const groupRoles = await robloxGroup.getRoles();
             auditLog.data.forEach(async (log) => {
                 if(robloxClient.user.id !== log.actor.user.userId) {
