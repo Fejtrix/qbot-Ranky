@@ -11,10 +11,9 @@ import { recordMemberCount } from './events/member';
 import { clearActions } from './handlers/abuseDetection';
 import { checkBans } from './events/bans';
 import { checkWallForAds } from './events/wall';
-import http from 'http';
 require('dotenv').config();
 
-// [Crash Handlers - Prints exact error instead of exiting silently]
+// [Crash Handlers]
 process.on('unhandledRejection', (reason) => {
     console.error('Unhandled Rejection:', reason);
 });
@@ -29,18 +28,7 @@ if (!process.env.ROBLOX_COOKIE) {
 }
 
 require('./database');
-require('./api');
-
-// [HTTP Server for Render Port Binding]
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Qbot is alive and running!');
-});
-
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`HTTP server is listening on port ${PORT}`);
-});
+require('./api'); // This already binds to Render's port
 
 // [Clients]
 const discordClient = new QbotClient();
