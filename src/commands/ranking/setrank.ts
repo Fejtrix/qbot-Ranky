@@ -97,12 +97,35 @@ class SetRankCommand extends Command {
         }
 
         const userData = await provider.findUser(robloxUser.id.toString());
-        if(userData.suspendedUntil) return ctx.reply({ embeds: [ getUserSuspendedEmbed() ] });
+        if(userData?.suspendedUntil) return ctx.reply({ embeds: [ getUserSuspendedEmbed() ] });
 
         try {
             await robloxGroup.updateMember(robloxUser.id, role.id);
-            ctx.reply({ embeds: [ await getSuccessfulSetRankEmbed(robloxUser, role.name) ]})
+            ctx.reply({ embeds: [ await getSuccessfulSetRankEmbed(robloxUser, role.name) ]});
             logAction('Update Rank', ctx.user, ctx.args['reason'], robloxUser, `${robloxMember.role.name} (${robloxMember.role.rank}) → ${role.name} (${role.rank})`);
+
+            // --- Synchronize Discord Roles ---
+            try {
+                if (userData && userData.discordId && ctx.guild) {
+                    const discordMember = await ctx.guild.members.fetch(userData.discordId).catch(() => null);
+                    
+                    if (discordMember && (config as any).discordRolesMap) {
+                        const targetDiscordRoleId = (config as any).discordRolesMap[role.id];
+                        const oldDiscordRoleId = (config as any).discordRolesMap[robloxMember.role.id];
+
+                        if (oldDiscordRoleId && discordMember.roles.cache.has(oldDiscordRoleId)) {
+                            await discordMember.roles.remove(oldDiscordRoleId).catch(() => {});
+                        }
+                        if (targetDiscordRoleId && !discordMember.roles.cache.has(targetDiscordRoleId)) {
+                            await discordMember.roles.add(targetDiscordRoleId).catch(() => {});
+                        }
+                    }
+                }
+            } catch (discordErr) {
+                console.error('Failed to sync Discord roles:', discordErr);
+            }
+            // ---------------------------------
+
         } catch (err) {
             console.log(err);
             return ctx.reply({ embeds: [ getUnexpectedErrorEmbed() ]});
