@@ -9,13 +9,13 @@ export const config: BotConfig = {
         prefixes: ['q!'],
     },
     permissions: {
-        all: [''],
+        all: ['1528857017387716892'],
         ranking: [''],
         users: [''],
         shout: [''],
         join: [''],
         signal: [''],
-        admin: ['1528857017387716892'],
+        admin: [''],
     },
     logChannels: {
         actions: '',
